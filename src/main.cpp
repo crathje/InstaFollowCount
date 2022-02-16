@@ -8,6 +8,8 @@
 
 const char *ssid = "ONE WIFI TO RULE THEM ALL";
 const char *password = "One Mississippi, Two Mississippi";
+// Instagram Channel ID, look at https://instagram.com/<YOURCHANNELNAME>/channel/?__a=1 for the ID
+const char *channelid = "44601813942";
 
 WiFiClientSecure secureClient;
 HTTPClient http;
@@ -57,8 +59,7 @@ void loop()
 {
   int ret;
   // based on https://stackoverflow.com/questions/32407851/instagram-api-how-can-i-retrieve-the-list-of-people-a-user-is-following-on-ins
-  // channel id is: 44601813942
-  String followersUrl = "https://www.instagram.com/graphql/query/?query_hash=c76146de99bb02f6415203be841dd25a&variables=%7B%22id%22%3A44601813942%2C%22include_reel%22%3Atrue%2C%22fetch_mutual%22%3Atrue%2C%22first%22%3A50%7D";
+  String followersUrl = "https://www.instagram.com/graphql/query/?query_hash=c76146de99bb02f6415203be841dd25a&variables=%7B%22id%22%3A" + String(channelid) + "%2C%22include_reel%22%3Atrue%2C%22fetch_mutual%22%3Atrue%2C%22first%22%3A50%7D";
   // hate 302 and 301 to login page due to rate limit for testing locally
   if (ssid[0] == 'E' && ssid[strlen(ssid) - 1] == 't')
   {
