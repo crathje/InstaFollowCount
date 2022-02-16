@@ -8,6 +8,7 @@
 
 const char *ssid = "ONE WIFI TO RULE THEM ALL";
 const char *password = "One Mississippi, Two Mississippi";
+const char *channelname = "CatInTheDiceBag";
 // Instagram Channel ID, look at https://instagram.com/<YOURCHANNELNAME>/channel/?__a=1 for the ID
 const char *channelid = "44601813942";
 
@@ -41,7 +42,7 @@ void setup()
   Serial.println("Connecting");
   while (WiFi.status() != WL_CONNECTED)
   {
-    delay(500);
+    delay(300);
     Serial.print(".");
   }
   Serial.println("");
@@ -55,16 +56,16 @@ void setup()
   secureClient.setInsecure();
 }
 
-void loop()
+int followersByGraphQL(String channelid, long *followers)
 {
-  int ret;
+  int ret = -1;
   // based on https://stackoverflow.com/questions/32407851/instagram-api-how-can-i-retrieve-the-list-of-people-a-user-is-following-on-ins
-  String followersUrl = "https://www.instagram.com/graphql/query/?query_hash=c76146de99bb02f6415203be841dd25a&variables=%7B%22id%22%3A" + String(channelid) + "%2C%22include_reel%22%3Atrue%2C%22fetch_mutual%22%3Atrue%2C%22first%22%3A50%7D";
+  String followersUrl = "https://www.instagram.com/graphql/query/?query_hash=c76146de99bb02f6415203be841dd25a&variables=%7B%22id%22%3A" + channelid + "%2C%22include_reel%22%3Atrue%2C%22fetch_mutual%22%3Atrue%2C%22first%22%3A50%7D";
   // hate 302 and 301 to login page due to rate limit for testing locally
-  if (ssid[0] == 'E' && ssid[strlen(ssid) - 1] == 't')
-  {
-    followersUrl = "https://iot.ra.thje.net/tmp/twitter-api-follower.json";
-  }
+  // if (ssid[0] == 'E' && ssid[strlen(ssid) - 1] == 't')
+  // {
+  //   followersUrl = "https://iot.ra.thje.net/tmp/twitter-api-follower.json";
+  // }
   http.begin(secureClient, followersUrl);
   ret = http.GET();
   ESP_LOGI(TAG, "GET: %d", ret);
@@ -73,16 +74,117 @@ void loop()
   {
     DynamicJsonDocument followerDoc(2048);
     deserializeJson(followerDoc, http.getStream());
-    followers = followerDoc["data"]["user"]["edge_followed_by"]["count"];
+    long newfollowers = -1;
+    newfollowers = followerDoc["data"]["user"]["edge_followed_by"]["count"];
+    if (newfollowers > -1)
+    {
+      *followers = newfollowers;
+    }
+    http.end();
+    return 0; // success
+  }
+  else
+  {
+    ESP_LOGE(TAG, "HTTP Error: %d", ret);
+  }
+  http.end();
+  return -1;
+}
+int followersByAnonSite(String channelname, long *followers, String siteURL)
+{
+
+  int ret = -1;
+  String followersUrl = siteURL + channelname;
+  http.begin(secureClient, followersUrl);
+  ret = http.GET();
+  ESP_LOGI(TAG, "GET: %d", ret);
+
+  if (ret == HTTP_CODE_OK)
+  {
+    // save ram and walk in chunks
+    while (http.getStream().available())
+    {
+      String line = http.getStream().readStringUntil('\n');
+      // search for the user items, might state Followers in posts like 'thanks to all my Followers'...
+      if (line.indexOf("<li class=\"user__item\"") > 0 && line.indexOf("Followers") > 0)
+      {
+        line = line.substring(0, line.indexOf("Followers"));
+        ESP_LOGI(TAG, "line: %s", line.c_str());
+        line = line.substring(line.lastIndexOf(">") + 1);
+        ESP_LOGI(TAG, "line: %s", line.c_str());
+        line.replace(" ", "");
+        ESP_LOGI(TAG, "line: %s", line.c_str());
+        long newfollowers = line.toInt();
+        if (newfollowers > -1)
+        {
+          *followers = newfollowers;
+          return 0; // success
+        }
+        http.end();
+        return -1;
+      }
+    }
+  }
+  http.end();
+  return -1;
+}
+
+int followersByGreatFon(String channelname, long *followers)
+{
+  return followersByAnonSite(channelname, followers, "https://greatfon.com/v/");
+}
+int followersByDUMPOR(String channelname, long *followers)
+{
+  return followersByAnonSite(channelname, followers, "https://dumpor.com/v/");
+}
+
+void loop()
+{
+  bool updateSucceeded = false;
+  if (!updateSucceeded)
+  {
+    if (followersByGraphQL(String(channelid), &followers) != 0)
+    {
+      ESP_LOGE(TAG, "Could not get via GraphQL");
+    }
+    else
+    {
+      updateSucceeded = true;
+    }
+  }
+  if (!updateSucceeded)
+  {
+    if (followersByGreatFon(String(channelname), &followers) != 0)
+    {
+      ESP_LOGE(TAG, "Could not get via GreatFon");
+    }
+    else
+    {
+      updateSucceeded = true;
+    }
+  }
+  if (!updateSucceeded)
+  {
+    if (followersByDUMPOR(String(channelname), &followers) != 0)
+    {
+      ESP_LOGE(TAG, "Could not get via DUMPOR");
+    }
+    else
+    {
+      updateSucceeded = true;
+    }
+  }
+  if (followers > -1)
+  {
     Serial.printf("followers: %ld\n", followers);
 #ifdef ST7789_DRIVER
-    tft.fillScreen(TFT_BLACK);
     tft.setTextSize(1);
     tft.setCursor(0, 0);
-    tft.setTextDatum(TC_DATUM); // Centre text on x,y position
+    tft.setTextDatum(TC_DATUM); // Center text on x,y position
     tft.setFreeFont(&FreeSerifBold12pt7b);
     tft.setTextColor(TFT_BLUE, TFT_BLACK);
-    tft.drawString("CatInTheDiceBag", tft.width() / 2, 5, GFXFF);
+    tft.fillScreen(TFT_BLACK);
+    tft.drawString(channelname, tft.width() / 2, 5, GFXFF);
     tft.setTextColor(TFT_GOLD, TFT_BLACK);
     tft.drawString("followers", tft.width() / 2, 5 + tft.fontHeight(GFXFF), GFXFF);
     tft.setTextSize(2);
@@ -91,9 +193,10 @@ void loop()
     tft.drawString(String(followers), tft.width() / 2, tft.height() - tft.fontHeight(GFXFF) + 20, GFXFF);
 #endif
   }
-  else
+  if (updateSucceeded)
   {
-    ESP_LOGE(TAG, "HTTP Error: %d", ret);
+    sleep(10 * 60);
   }
-  sleep(10 * 60);
+  // esp_sleep_enable_timer_wakeup(60UL * 1000000UL);
+  // esp_deep_sleep_start();
 }

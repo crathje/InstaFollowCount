@@ -3,10 +3,14 @@
 ![InstaFollowCount on TTGO T-Display](InstaFollowCount-T-Display.jpg?raw=true)
 
 Use the GraphQL to get the follower count of an Instagram account on an ESP32.
+
 Uses [ArduinoJson](https://arduinojson.org/) to parse the data, but could be done via string manipulation to save some space.
+
 Sample with Display for [TTGO T-Display](https://github.com/Xinyuan-LilyGO/TTGO-T-Display).
 
-# Interesting query hashes found on the net:
+Fallback to use [GreatFon](https://greatfon.com/) or [DUMPOR](https://dumpor.com/) in case Instagram's redirect-to-login rate limit kicks in. Very basic way of parsing the html but it did work :-)
+
+# Interesting GraphQL query hashes for instagram found on the net:
 
 ## Following List
 d04b0a864b4b54837c0d870b0e77e076
