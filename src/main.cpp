@@ -12,6 +12,12 @@ const char *channelname = "CatInTheDiceBag";
 // Instagram Channel ID, look at https://instagram.com/<YOURCHANNELNAME>/channel/?__a=1 for the ID
 const char *channelid = "44601813942";
 
+int requests = 0;
+int maxRequests = 5;
+
+unsigned long previousMillis = 0;
+unsigned long interval = 30000;
+
 WiFiClientSecure secureClient;
 HTTPClient http;
 
@@ -179,83 +185,92 @@ int followersByDUMPOR(String channelname, long *followers)
 
 void loop()
 {
-  long followers_pre = followers;
-  bool updateSucceeded = false;
-  if (!updateSucceeded)
-  {
-    if (followersByGraphQL(String(channelid), &followers) != 0)
+  long unsigned currentMillis = millis();
+  if(WiFi.status() == WL_CONNECTED) {
+    requests++;
+    long followers_pre = followers;
+    bool updateSucceeded = false;
+    if (!updateSucceeded)
     {
-      ESP_LOGE(TAG, "Could not get via GraphQL");
+      if (followersByGraphQL(String(channelid), &followers) != 0)
+      {
+        ESP_LOGE(TAG, "Could not get via GraphQL");
+      }
+      else
+      {
+        updateSucceeded = true;
+      }
     }
-    else
+    if (!updateSucceeded)
     {
-      updateSucceeded = true;
+      if (followersByGreatFon(String(channelname), &followers) != 0)
+      {
+        ESP_LOGE(TAG, "Could not get via GreatFon");
+      }
+      else
+      {
+        updateSucceeded = true;
+      }
     }
+    if (!updateSucceeded)
+    {
+      if (followersByDUMPOR(String(channelname), &followers) != 0)
+      {
+        ESP_LOGE(TAG, "Could not get via DUMPOR");
+      }
+      else
+      {
+        updateSucceeded = true;
+      }
+    }
+  #ifdef USECACHEDSERVICETHATWASNEVERINTENDEDASPUBLIC
+    if (!updateSucceeded)
+    {
+      if (followersByCachedService(String(channelname), &followers) != 0)
+      {
+        ESP_LOGE(TAG, "Could not get via Cached Service");
+      }
+      else
+      {
+        updateSucceeded = true;
+      }
+    }
+  #endif
+    if (followers > -1)
+    {
+      Serial.printf("%10lu:: Followers: %ld\n", millis(), followers);
+  #ifdef ST7789_DRIVER
+      tft.setTextSize(1);
+      tft.setCursor(0, 0);
+      tft.setTextDatum(TC_DATUM); // Center text on x,y position
+      tft.setFreeFont(&FreeSerifBold12pt7b);
+      tft.setTextColor(TFT_BLUE, TFT_BLACK);
+      if (followers_pre == -1) // only clear screen on first successful retrieval, otherwise the black BG of the font is enogh redraw
+      {
+        tft.fillScreen(TFT_BLACK);
+        tft.drawString(channelname, tft.width() / 2, 5, GFXFF);
+        tft.setTextColor(TFT_GOLD, TFT_BLACK);
+        tft.drawString("followers", tft.width() / 2, 5 + tft.fontHeight(GFXFF), GFXFF);
+      }
+      if (followers_pre != followers)
+      {
+        tft.setTextSize(2);
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.setFreeFont(&FreeSerifBold18pt7b);
+        tft.drawString(String(followers), tft.width() / 2, tft.height() - tft.fontHeight(GFXFF) + 20, GFXFF);
+      }
+  #endif
+    }
+    if (updateSucceeded || requests >= maxRequests)
+    {
+      sleep(30 * 60); // every 30min to overcome rate limit
+      requests = 0;
+    }
+    // esp_sleep_enable_timer_wakeup(60UL * 1000000UL);
+    // esp_deep_sleep_start();
+  } else if (WiFi.status() != WL_CONNECTED && ((currentMillis - previousMillis > interval))) {
+    ESP_LOGE(TAG, "Reconnecting to WiFi");
+    WiFi.disconnect();
+    WiFi.reconnect();
   }
-  if (!updateSucceeded)
-  {
-    if (followersByGreatFon(String(channelname), &followers) != 0)
-    {
-      ESP_LOGE(TAG, "Could not get via GreatFon");
-    }
-    else
-    {
-      updateSucceeded = true;
-    }
-  }
-  if (!updateSucceeded)
-  {
-    if (followersByDUMPOR(String(channelname), &followers) != 0)
-    {
-      ESP_LOGE(TAG, "Could not get via DUMPOR");
-    }
-    else
-    {
-      updateSucceeded = true;
-    }
-  }
-#ifdef USECACHEDSERVICETHATWASNEVERINTENDEDASPUBLIC
-  if (!updateSucceeded)
-  {
-    if (followersByCachedService(String(channelname), &followers) != 0)
-    {
-      ESP_LOGE(TAG, "Could not get via Cached Service");
-    }
-    else
-    {
-      updateSucceeded = true;
-    }
-  }
-#endif
-  if (followers > -1)
-  {
-    Serial.printf("%10lu:: Followers: %ld\n", millis(), followers);
-#ifdef ST7789_DRIVER
-    tft.setTextSize(1);
-    tft.setCursor(0, 0);
-    tft.setTextDatum(TC_DATUM); // Center text on x,y position
-    tft.setFreeFont(&FreeSerifBold12pt7b);
-    tft.setTextColor(TFT_BLUE, TFT_BLACK);
-    if (followers_pre == -1) // only clear screen on first successful retrieval, otherwise the black BG of the font is enogh redraw
-    {
-      tft.fillScreen(TFT_BLACK);
-      tft.drawString(channelname, tft.width() / 2, 5, GFXFF);
-      tft.setTextColor(TFT_GOLD, TFT_BLACK);
-      tft.drawString("followers", tft.width() / 2, 5 + tft.fontHeight(GFXFF), GFXFF);
-    }
-    if (followers_pre != followers)
-    {
-      tft.setTextSize(2);
-      tft.setTextColor(TFT_RED, TFT_BLACK);
-      tft.setFreeFont(&FreeSerifBold18pt7b);
-      tft.drawString(String(followers), tft.width() / 2, tft.height() - tft.fontHeight(GFXFF) + 20, GFXFF);
-    }
-#endif
-  }
-  if (updateSucceeded)
-  {
-    sleep(30 * 60); // every 30min to overcome rate limit
-  }
-  // esp_sleep_enable_timer_wakeup(60UL * 1000000UL);
-  // esp_deep_sleep_start();
 }
