@@ -272,5 +272,6 @@ void loop()
     ESP_LOGE(TAG, "Reconnecting to WiFi");
     WiFi.disconnect();
     WiFi.reconnect();
+    previousMillis = currentMillis;
   }
 }
