@@ -5,6 +5,8 @@
 #include <HTTPClient.h>
 #include <TFT_eSPI.h>
 #include <SPI.h>
+#include "RTClib.h"
+#include <TimeLib.h>
 #ifdef ST7789_DRIVER
 #include "images.h"
 #endif
@@ -15,11 +17,16 @@ const char *channelname = "CatInTheDiceBag";
 // Instagram Channel ID, look at https://instagram.com/<YOURCHANNELNAME>/channel/?__a=1 for the ID
 const char *channelid = "44601813942";
 
+
+const char compile_date[] = __DATE__ " " __TIME__;
+DateTime _BUILD_DATE_DATETIME = DateTime(F(__DATE__), F(__TIME__));
+
+
 int requests = 0;
 int maxRequests = 5;
 
 unsigned long previousMillis = 0;
-unsigned long interval = 30000;
+unsigned long interval = 30 * 1000;
 
 WiFiClientSecure secureClient;
 HTTPClient http;
@@ -28,7 +35,7 @@ HTTPClient http;
 TFT_eSPI tft = TFT_eSPI(); // Invoke library, pins defined in User_Setup.h
 #define GFXFF 1
 
-//tft.pushImage(xx, 0, 48, 48, image_data_catinthedicebag48);
+//tft.pushImage(xx, 0, 48, 48, catinthedicebag48.data);
 //pushImage messes up the colors with the default export, just draw manually for now
 void pushImage(TFT_eSPI t, uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *data)
 {
@@ -40,6 +47,51 @@ void pushImage(TFT_eSPI t, uint16_t x, uint16_t y, uint16_t w, uint16_t h, const
     }
   }
 }
+
+void drawDice(TFT_eSPI t, uint16_t x, uint16_t y, uint8_t value)
+{
+  ESP_LOGV(TAG, "drawDice:: x:%3d y:%2d v:%d", x, y, value);
+  if (value < 0 || value > 9)
+  {
+    t.fillRect(x, y, blankreddice.width, blankreddice.height, tft.color565(114, 202, 193));
+    return;
+  }
+  
+  pushImage(t, x, y, blankreddice.width, blankreddice.height, reddiceNumers[value].data);
+#ifdef USEBLANKDICEANDWRITEONIT
+  pushImage(t, x, y, blankreddice.width, blankreddice.height, blankreddice.data);
+  t.setTextSize(1);
+  t.setTextColor(TFT_WHITE);
+  t.setFreeFont(&FreeSerifBold9pt7b);
+  t.setTextDatum(CC_DATUM);
+  t.drawString(String(value), x + blankreddice.width / 2 - 1, y + 20, GFXFF);
+#endif
+}
+
+void drawDiceNumber(TFT_eSPI t, uint16_t x, uint16_t y, long value, uint8_t trim = 0)
+{
+  long v = 100000;
+  int xx = x;
+  if (trim)
+  {
+    while (v > value)
+    {
+      v = v / 10;
+    }
+  }
+  for (; v > 0;)
+  {
+    long val = (value / v) % 10;
+    if (value < v)
+    {
+      val = -1; // clear
+    }
+    drawDice(t, xx, y, val);
+    xx += blankreddice.width;
+    v = v / 10;
+  }
+}
+
 #endif
 
 long followers = -1;
@@ -48,15 +100,33 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println();
+  uint64_t chipid;
+  chipid = ESP.getEfuseMac(); //The chip ID is essentially its MAC address(length: 6 bytes).
+
+  Serial.println(F("===== CHIP INFO ====="));
+  Serial.printf("ChipID:            %04X%08X\n", (uint16_t)(chipid >> 32), (uint32_t)chipid);
+  Serial.printf("CpuFreqMHz:        %3d\n", ESP.getCpuFreqMHz());
+  Serial.printf("ChipRevision:      %3d\n", ESP.getChipRevision());
+  Serial.printf("FreeHeap:          %3d\n", ESP.getFreeHeap());
+  Serial.printf("CycleCount:        %3d\n", ESP.getCycleCount());
+  Serial.printf("SdkVersion:        %s\n", ESP.getSdkVersion());
+  Serial.printf("FlashChipSize:     %3d\n", ESP.getFlashChipSize());
+  //Serial.printf("FlashChipRealSize: %3d\n", ESP.getFlashChipRealSize());
+  Serial.printf("FlashChipSpeed:    %3d\n", ESP.getFlashChipSpeed());
+  Serial.printf("FlashChipMode:     %3d\n", ESP.getFlashChipMode());
+  Serial.println(F("===== COMPILE DATE ====="));
+  Serial.println(compile_date);
+  Serial.println(F("===== STARTING ====="));
 // init TFT
 #ifdef ST7789_DRIVER
   tft.init();
   tft.setRotation(1);
   //  tft.fillScreen(TFT_BLACK);
   tft.fillScreen(tft.color565(114, 202, 193));
-  for (int x = 0; x < tft.width(); x += 48)
+  // for (int x = 0; x < tft.width(); x += catinthedicebag48.width)
+  for (int x = 0; x < catinthedicebag48.width; x += catinthedicebag48.width)
   {
-    pushImage(tft, x, 0, 48, 48, image_data_catinthedicebag48);
+    pushImage(tft, x, 0, catinthedicebag48.width, catinthedicebag48.height, catinthedicebag48.data);
   }
   tft.setCursor(0, 55);
   tft.setTextSize(2);
@@ -115,41 +185,6 @@ int followersByGraphQL(String channelid, long *followers)
   return -1;
 }
 
-#ifdef USECACHEDSERVICETHATWASNEVERINTENDEDASPUBLIC
-int followersByCachedService(String channelname, long *followers)
-{
-  int ret = -1;
-  // this is some quick 'n dirty way to cache the stuff and always provide a small json generated from
-  // some sites with internal fallback.
-  // easier to adapt later on in case any of the sites change -> change on place and all clients continue working
-  // needs whitelisting for accounts in order to not flood my webspace that much in case this slips out of hand
-  String followersUrl = "https://iot.ra.thje.net/instainfo/?channel=" + channelname;
-  http.begin(secureClient, followersUrl);
-  ret = http.GET();
-  ESP_LOGI(TAG, "GET: %d", ret);
-
-  if (ret == HTTP_CODE_OK)
-  {
-    DynamicJsonDocument followerDoc(2048);
-    deserializeJson(followerDoc, http.getStream());
-    long newfollowers = -1;
-    newfollowers = followerDoc["followers"];
-    if (newfollowers > -1)
-    {
-      *followers = newfollowers;
-    }
-    http.end();
-    return 0; // success
-  }
-  else
-  {
-    ESP_LOGE(TAG, "HTTP Error: %d", ret);
-  }
-  http.end();
-  return -1;
-}
-#endif
-
 int followersByAnonSite(String channelname, long *followers, String siteURL)
 {
   int ret = -1;
@@ -202,6 +237,63 @@ int followersByDUMPOR(String channelname, long *followers)
   return followersByAnonSite(lowercasename, followers, "https://dumpor.com/v/");
 }
 
+int followersByAnonIGViewer(String channelname, long *followers)
+{
+  int ret = -1;
+  String lowercasename = channelname;
+  lowercasename.toLowerCase();
+  String followersUrl = "https://www.anonigviewer.com/profile.php?u=" + lowercasename;
+  http.begin(secureClient, followersUrl);
+  ret = http.GET();
+  ESP_LOGI(TAG, "GET: %d", ret);
+
+  if (ret == HTTP_CODE_OK)
+  {
+    // save ram and discard a lot of pretext
+    bool found = false;
+    while (http.getStream().available() && !found)
+    {
+      String line = http.getStream().readStringUntil('\n');
+      if (line.indexOf(">Posts<") > 0)
+      {
+        found = true;
+      }
+    }
+    String all = "";
+    // save ram and walk in chunks
+    while (http.getStream().available())
+    {
+      String line = http.getStream().readStringUntil('\n');
+      all += line;
+      if (line.indexOf(">Followers<") > 0)
+      {
+        all = all.substring(0, all.indexOf(">Followers<"));
+        ESP_LOGI(TAG, "all: %s", all.c_str());
+        all = all.substring(0, all.indexOf("</span"));
+        ESP_LOGI(TAG, "all: %s", all.c_str());
+        all = all.substring(all.lastIndexOf(">") + 1);
+        ESP_LOGI(TAG, "all: %s", all.c_str());
+        all.replace(",", "");
+        ESP_LOGI(TAG, "all: %s", all.c_str());
+        long newfollowers = all.toInt();
+        if (newfollowers > -1)
+        {
+          *followers = newfollowers;
+          return 0; // success
+        }
+        http.end();
+        return -1;
+      }
+    }
+  }
+  else
+  {
+    ESP_LOGE(TAG, "HTTP Error: %d", ret);
+  }
+  http.end();
+  return -1;
+}
+
 void loop()
 {
   long unsigned currentMillis = millis();
@@ -219,6 +311,7 @@ void loop()
       else
       {
         updateSucceeded = true;
+        ESP_LOGI(TAG, "GraphQL succeeded");
       }
     }
     if (!updateSucceeded)
@@ -230,6 +323,7 @@ void loop()
       else
       {
         updateSucceeded = true;
+        ESP_LOGI(TAG, "GreatFon succeeded");
       }
     }
     if (!updateSucceeded)
@@ -241,21 +335,21 @@ void loop()
       else
       {
         updateSucceeded = true;
+        ESP_LOGI(TAG, "DUMPOR succeeded");
       }
     }
-#ifdef USECACHEDSERVICETHATWASNEVERINTENDEDASPUBLIC
     if (!updateSucceeded)
     {
-      if (followersByCachedService(String(channelname), &followers) != 0)
+      if (followersByAnonIGViewer(String(channelname), &followers) != 0)
       {
-        ESP_LOGE(TAG, "Could not get via Cached Service");
+        ESP_LOGE(TAG, "Could not get via AnonIGViewer");
       }
       else
       {
         updateSucceeded = true;
+        ESP_LOGI(TAG, "AnonIGViewer succeeded");
       }
     }
-#endif
     if (followers > -1)
     {
       Serial.printf("%10lu:: Followers: %ld\n", millis(), followers);
@@ -263,16 +357,17 @@ void loop()
 #ifdef ST7789_DRIVER
       tft.setTextSize(1);
       tft.setCursor(0, 0);
-      tft.setTextDatum(TC_DATUM); // Center text on x,y position
-      if (followers_pre == -1)    // only clear screen on first successful retrieval, otherwise the BG of the font is enogh redraw
+      if (followers_pre == -1) // only clear screen on first successful retrieval, otherwise the BG of the font is enogh redraw in case numbers do not get smaller -> don't loose followers :-)
       {
+        tft.setTextDatum(TC_DATUM); // Top Center Text
         tft.setFreeFont(&FreeSerifBold12pt7b);
         //tft.fillScreen(TFT_BLACK);
+        // clear lower part where boot message have been
         tft.fillRect(0, 48, tft.width(), tft.height() - 48, tft.color565(114, 202, 193));
-        //tft.setTextColor(TFT_BLUE);
-        //tft.drawString(channelname, tft.width() / 2, 5, GFXFF);
+        tft.setTextColor(TFT_BLUE);
+        tft.drawString(channelname, (tft.width() - catinthedicebag48.width) / 2 + catinthedicebag48.width, 3, GFXFF);
         tft.setTextColor(TFT_GOLD);
-        tft.drawString("followers", tft.width() / 2, 50, GFXFF);
+        tft.drawString("followers", (tft.width() - catinthedicebag48.width) / 2 + catinthedicebag48.width, 24, GFXFF);
       }
       if (followers_pre != followers)
       {
@@ -281,7 +376,11 @@ void loop()
         // tft.setFreeFont(&FreeSerifBold18pt7b);
         // tft.drawString(String(followers), tft.width() / 2, 78, GFXFF);
         tft.setTextFont(7);
-        tft.drawString(String(followers), tft.width() / 2, 78);
+        tft.setTextDatum(TC_DATUM); // Center text on x position
+        tft.drawString(String(followers), tft.width() / 2, 83);
+
+        // drawDiceNumber(tft, 0, 48, followers);
+        drawDiceNumber(tft, (tft.width() - String(followers).length() * blankreddice.width) / 2, 48, followers, 1);
       }
 #endif
     }
@@ -295,8 +394,9 @@ void loop()
   }
   else if (WiFi.status() != WL_CONNECTED && ((currentMillis - previousMillis > interval)))
   {
-    ESP_LOGE(TAG, "Reconnecting to WiFi");
+    ESP_LOGE(TAG, "WiFi connection lost");
     WiFi.disconnect();
+    ESP_LOGI(TAG, "Reconnecting to WiFi");
     WiFi.reconnect();
     previousMillis = currentMillis;
   }

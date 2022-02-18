@@ -8,11 +8,15 @@ Uses [ArduinoJson](https://arduinojson.org/) to parse the data, but could be don
 
 Sample with Display for [TTGO T-Display](https://github.com/Xinyuan-LilyGO/TTGO-T-Display).
 
-Fallback to use [GreatFon](https://greatfon.com/) or [DUMPOR](https://dumpor.com/) in case Instagram's redirect-to-login rate limit kicks in. Very basic way of parsing the html but it did work :-)
+Fallback to use [GreatFon](https://greatfon.com/), [DUMPOR](https://dumpor.com/) or [AnonIGViewer](https://www.anonigviewer.com/) in case Instagram's redirect-to-login rate limit kicks in. Very basic way of parsing the html but it did work :-)
+
+This is just a proof of concept, not intendet to be used regularly / in production.
 
 # Graphic sample
 
 ![InstaFollowCount with images on TTGO T-Display](InstaFollowCount-T-Display-catinthedicebag.JPG?raw=true)
+
+Image used is from [CatInTheDiceBag](https://www.etsy.com/de/shop/CatInTheDiceBag) because Kim asked me something in order to build a Follower-IoT-Thingy, now we use Daniel's dices as sample. I do not know Daniel in person, neither have I ever bought any of his cool dices or gotten any discount from him. We just use him because I do not have an Instagram account myself.
 
 # Interesting GraphQL query hashes for instagram found on the net:
 
