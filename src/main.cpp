@@ -5,6 +5,9 @@
 #include <HTTPClient.h>
 #include <TFT_eSPI.h>
 #include <SPI.h>
+#ifdef ST7789_DRIVER
+#include "images.h"
+#endif
 
 const char *ssid = "ONE WIFI TO RULE THEM ALL";
 const char *password = "One Mississippi, Two Mississippi";
@@ -24,6 +27,19 @@ HTTPClient http;
 #ifdef ST7789_DRIVER
 TFT_eSPI tft = TFT_eSPI(); // Invoke library, pins defined in User_Setup.h
 #define GFXFF 1
+
+//tft.pushImage(xx, 0, 48, 48, image_data_catinthedicebag48);
+//pushImage messes up the colors with the default export, just draw manually for now
+void pushImage(TFT_eSPI t, uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *data)
+{
+  for (int xi = 0; xi < w; xi++)
+  {
+    for (int yi = 0; yi < h; yi++)
+    {
+      t.drawPixel(x + xi, y + yi, data[yi * w + xi]);
+    }
+  }
+}
 #endif
 
 long followers = -1;
@@ -32,18 +48,21 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println();
-
 // init TFT
 #ifdef ST7789_DRIVER
   tft.init();
   tft.setRotation(1);
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setCursor(0, 5);
+  //  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(tft.color565(114, 202, 193));
+  for (int x = 0; x < tft.width(); x += 48)
+  {
+    pushImage(tft, x, 0, 48, 48, image_data_catinthedicebag48);
+  }
+  tft.setCursor(0, 55);
   tft.setTextSize(2);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setTextColor(TFT_BLACK);
   tft.println(F("WiFi Connecting to:"));
-  tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  tft.setTextColor(TFT_PURPLE);
   tft.println(ssid);
 #endif
 
@@ -186,7 +205,8 @@ int followersByDUMPOR(String channelname, long *followers)
 void loop()
 {
   long unsigned currentMillis = millis();
-  if(WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED)
+  {
     requests++;
     long followers_pre = followers;
     bool updateSucceeded = false;
@@ -223,7 +243,7 @@ void loop()
         updateSucceeded = true;
       }
     }
-  #ifdef USECACHEDSERVICETHATWASNEVERINTENDEDASPUBLIC
+#ifdef USECACHEDSERVICETHATWASNEVERINTENDEDASPUBLIC
     if (!updateSucceeded)
     {
       if (followersByCachedService(String(channelname), &followers) != 0)
@@ -235,31 +255,35 @@ void loop()
         updateSucceeded = true;
       }
     }
-  #endif
+#endif
     if (followers > -1)
     {
       Serial.printf("%10lu:: Followers: %ld\n", millis(), followers);
-  #ifdef ST7789_DRIVER
+
+#ifdef ST7789_DRIVER
       tft.setTextSize(1);
       tft.setCursor(0, 0);
       tft.setTextDatum(TC_DATUM); // Center text on x,y position
-      tft.setFreeFont(&FreeSerifBold12pt7b);
-      tft.setTextColor(TFT_BLUE, TFT_BLACK);
-      if (followers_pre == -1) // only clear screen on first successful retrieval, otherwise the black BG of the font is enogh redraw
+      if (followers_pre == -1)    // only clear screen on first successful retrieval, otherwise the BG of the font is enogh redraw
       {
-        tft.fillScreen(TFT_BLACK);
-        tft.drawString(channelname, tft.width() / 2, 5, GFXFF);
-        tft.setTextColor(TFT_GOLD, TFT_BLACK);
-        tft.drawString("followers", tft.width() / 2, 5 + tft.fontHeight(GFXFF), GFXFF);
+        tft.setFreeFont(&FreeSerifBold12pt7b);
+        //tft.fillScreen(TFT_BLACK);
+        tft.fillRect(0, 48, tft.width(), tft.height() - 48, tft.color565(114, 202, 193));
+        //tft.setTextColor(TFT_BLUE);
+        //tft.drawString(channelname, tft.width() / 2, 5, GFXFF);
+        tft.setTextColor(TFT_GOLD);
+        tft.drawString("followers", tft.width() / 2, 50, GFXFF);
       }
       if (followers_pre != followers)
       {
-        tft.setTextSize(2);
-        tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.setFreeFont(&FreeSerifBold18pt7b);
-        tft.drawString(String(followers), tft.width() / 2, tft.height() - tft.fontHeight(GFXFF) + 20, GFXFF);
+        tft.setTextColor(TFT_RED, tft.color565(114, 202, 193));
+        // tft.setTextSize(2);
+        // tft.setFreeFont(&FreeSerifBold18pt7b);
+        // tft.drawString(String(followers), tft.width() / 2, 78, GFXFF);
+        tft.setTextFont(7);
+        tft.drawString(String(followers), tft.width() / 2, 78);
       }
-  #endif
+#endif
     }
     if (updateSucceeded || requests >= maxRequests)
     {
@@ -268,7 +292,9 @@ void loop()
     }
     // esp_sleep_enable_timer_wakeup(60UL * 1000000UL);
     // esp_deep_sleep_start();
-  } else if (WiFi.status() != WL_CONNECTED && ((currentMillis - previousMillis > interval))) {
+  }
+  else if (WiFi.status() != WL_CONNECTED && ((currentMillis - previousMillis > interval)))
+  {
     ESP_LOGE(TAG, "Reconnecting to WiFi");
     WiFi.disconnect();
     WiFi.reconnect();

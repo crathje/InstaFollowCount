@@ -10,6 +10,10 @@ Sample with Display for [TTGO T-Display](https://github.com/Xinyuan-LilyGO/TTGO-
 
 Fallback to use [GreatFon](https://greatfon.com/) or [DUMPOR](https://dumpor.com/) in case Instagram's redirect-to-login rate limit kicks in. Very basic way of parsing the html but it did work :-)
 
+# Graphic sample
+
+![InstaFollowCount with images on TTGO T-Display](InstaFollowCount-T-Display-catinthedicebag.JPG?raw=true)
+
 # Interesting GraphQL query hashes for instagram found on the net:
 
 ## Following List
