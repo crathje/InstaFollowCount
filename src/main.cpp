@@ -11,16 +11,21 @@
 #include "images.h"
 #endif
 
+#ifdef USEWS2812
+#include <FastLED.h>
+#define NUM_LEDS 120
+#define DATA_PIN 17
+CRGB leds[NUM_LEDS];
+#endif
+
 const char *ssid = "ONE WIFI TO RULE THEM ALL";
 const char *password = "One Mississippi, Two Mississippi";
 const char *channelname = "CatInTheDiceBag";
 // Instagram Channel ID, look at https://instagram.com/<YOURCHANNELNAME>/channel/?__a=1 for the ID
 const char *channelid = "44601813942";
 
-
 const char compile_date[] = __DATE__ " " __TIME__;
 DateTime _BUILD_DATE_DATETIME = DateTime(F(__DATE__), F(__TIME__));
-
 
 int requests = 0;
 int maxRequests = 5;
@@ -56,7 +61,7 @@ void drawDice(TFT_eSPI t, uint16_t x, uint16_t y, uint8_t value)
     t.fillRect(x, y, blankreddice.width, blankreddice.height, tft.color565(114, 202, 193));
     return;
   }
-  
+
   pushImage(t, x, y, blankreddice.width, blankreddice.height, reddiceNumers[value].data);
 #ifdef USEBLANKDICEANDWRITEONIT
   pushImage(t, x, y, blankreddice.width, blankreddice.height, blankreddice.data);
@@ -94,6 +99,51 @@ void drawDiceNumber(TFT_eSPI t, uint16_t x, uint16_t y, long value, uint8_t trim
 
 #endif
 
+#ifdef USEWS2812
+
+void drawLEDDigit(CRGB *l, uint16_t baseaddress, uint8_t value)
+{
+  ESP_LOGV(TAG, "drawLEDDigit:: baseaddress:%3d v:%d", baseaddress, value);
+  // all black, 20 LEDs per digit
+  for (int i = 0; i < 20; i++)
+  {
+    l[baseaddress + i] = CRGB::Black;
+  }
+  if (value < 0 || value > 9)
+  {
+    return;
+  }
+
+  const uint8_t digittoaddress[] = {0, 5, 1, 6, 2, 7, 3, 8, 4, 9}; // needs to be adapted accordingly
+  l[baseaddress + digittoaddress[value] * 2 + 0] = CRGB::Red;
+  l[baseaddress + digittoaddress[value] * 2 + 1] = CRGB::Blue;
+}
+
+void drawLEDNumber(CRGB *l, long value, uint8_t trim = 0)
+{
+  long v = 100000;
+  int xx = 0;
+  if (trim)
+  {
+    while (v > value)
+    {
+      v = v / 10;
+    }
+  }
+  for (; v > 0;)
+  {
+    long val = (value / v) % 10;
+    if (value < v)
+    {
+      val = -1; // clear
+    }
+    drawLEDDigit(l, xx, val);
+    xx += 20; // 20 LEDs per digit
+    v = v / 10;
+  }
+}
+#endif
+
 long followers = -1;
 
 void setup()
@@ -114,9 +164,27 @@ void setup()
   //Serial.printf("FlashChipRealSize: %3d\n", ESP.getFlashChipRealSize());
   Serial.printf("FlashChipSpeed:    %3d\n", ESP.getFlashChipSpeed());
   Serial.printf("FlashChipMode:     %3d\n", ESP.getFlashChipMode());
+  Serial.println(F("===== PERIPHERY ====="));
+#ifdef USEWS2812
+  Serial.printf("LED DATA PIN:     %3d\n", DATA_PIN);
+  Serial.printf("LED COUNT:        %3d\n", NUM_LEDS);
+#endif
+  Serial.println(F("===== CONFIG ====="));
+  Serial.printf("Channel Name:      %s\n", channelname);
+  Serial.printf("Channel ID:        %s\n", channelid);
   Serial.println(F("===== COMPILE DATE ====="));
   Serial.println(compile_date);
   Serial.println(F("===== STARTING ====="));
+
+// init LEDs
+#ifdef USEWS2812
+  pinMode(DATA_PIN, OUTPUT);
+  //FastLED.addLeds<WS2812B, DATA_PIN, RGB>(leds, NUM_LEDS); // maybe use RGB?
+  FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS); // my testing strip is GRB
+  fill_solid(leds, NUM_LEDS, CRGB(0, 0, 0));
+  FastLED.show();
+#endif
+
 // init TFT
 #ifdef ST7789_DRIVER
   tft.init();
@@ -136,8 +204,14 @@ void setup()
   tft.println(ssid);
 #endif
 
+  // init WiFi
+  WiFi.mode(WIFI_STA);
+  String hostName = "InstaCount-" + String(channelname);
+  hostName = hostName.substring(0, min((unsigned int)hostName.length(), (unsigned int)32));
+  Serial.printf("HostName: %s\n", hostName.c_str());
+  WiFi.setHostname(hostName.c_str());
   WiFi.begin(ssid, password);
-  Serial.println("Connecting");
+  Serial.printf("Connecting to: %s\n", ssid);
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(300);
@@ -382,6 +456,11 @@ void loop()
         // drawDiceNumber(tft, 0, 48, followers);
         drawDiceNumber(tft, (tft.width() - String(followers).length() * blankreddice.width) / 2, 48, followers, 1);
       }
+#endif
+
+#ifdef USEWS2812
+      drawLEDNumber(leds, followers);
+      FastLED.show();
 #endif
     }
     if (updateSucceeded || requests >= maxRequests)
