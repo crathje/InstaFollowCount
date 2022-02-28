@@ -100,7 +100,8 @@ void drawDiceNumber(TFT_eSPI t, uint16_t x, uint16_t y, long value, uint8_t trim
 #endif
 
 #ifdef USEWS2812
-
+// used to draw on
+// https://www.led-genial.de/LED-Nixie-M-6-stelliger-Bausatz-inkl-LED-Basic-Controller
 void drawLEDDigit(CRGB *l, uint16_t baseaddress, uint8_t value)
 {
   ESP_LOGV(TAG, "drawLEDDigit:: baseaddress:%3d v:%d", baseaddress, value);
@@ -108,6 +109,7 @@ void drawLEDDigit(CRGB *l, uint16_t baseaddress, uint8_t value)
   for (int i = 0; i < 20; i++)
   {
     l[baseaddress + i] = CRGB::Black;
+    // l[baseaddress + i] = CRGB(1, 1, 1);
   }
   if (value < 0 || value > 9)
   {
@@ -117,6 +119,8 @@ void drawLEDDigit(CRGB *l, uint16_t baseaddress, uint8_t value)
   const uint8_t digittoaddress[] = {0, 5, 1, 6, 2, 7, 3, 8, 4, 9}; // needs to be adapted accordingly
   l[baseaddress + digittoaddress[value] * 2 + 0] = CRGB::Red;
   l[baseaddress + digittoaddress[value] * 2 + 1] = CRGB::Blue;
+  ESP_LOGV(TAG, "drawLEDDigit:: setting:%3d because of v:%d", baseaddress + digittoaddress[value] * 2 + 0, value);
+  ESP_LOGV(TAG, "drawLEDDigit:: setting:%3d because of v:%d", baseaddress + digittoaddress[value] * 2 + 1, value);
 }
 
 void drawLEDNumber(CRGB *l, long value, uint8_t trim = 0)
@@ -205,6 +209,7 @@ void setup()
 #endif
 
   // init WiFi
+  // WiFi.mode(WIFI_OFF);
   WiFi.mode(WIFI_STA);
   String hostName = "InstaCount-" + String(channelname);
   hostName = hostName.substring(0, min((unsigned int)hostName.length(), (unsigned int)32));
@@ -461,6 +466,14 @@ void loop()
 #ifdef USEWS2812
       drawLEDNumber(leds, followers);
       FastLED.show();
+      /*
+      // debug drawing the LEDs average light to get an idea which LED should be lit
+      for (int i = 0; i < NUM_LEDS; i++)
+      {
+        Serial.printf("%2X", leds[i].getAverageLight());
+      }
+      Serial.println();
+      */
 #endif
     }
     if (updateSucceeded || requests >= maxRequests)
