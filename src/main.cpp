@@ -13,7 +13,8 @@
 
 #ifdef USEWS2812
 #include <FastLED.h>
-#define NUM_LEDS 120
+#define NUM_LEDS 60
+#define LEDS_PER_DIGIT 10
 #define DATA_PIN 17
 CRGB leds[NUM_LEDS];
 #endif
@@ -105,8 +106,8 @@ void drawDiceNumber(TFT_eSPI t, uint16_t x, uint16_t y, long value, uint8_t trim
 void drawLEDDigit(CRGB *l, uint16_t baseaddress, uint8_t value)
 {
   ESP_LOGV(TAG, "drawLEDDigit:: baseaddress:%3d v:%d", baseaddress, value);
-  // all black, 20 LEDs per digit
-  for (int i = 0; i < 20; i++)
+  // all black, 10 LEDs per digit
+  for (int i = 0; i < LEDS_PER_DIGIT; i++)
   {
     l[baseaddress + i] = CRGB::Black;
     // l[baseaddress + i] = CRGB(1, 1, 1);
@@ -116,16 +117,16 @@ void drawLEDDigit(CRGB *l, uint16_t baseaddress, uint8_t value)
     return;
   }
 
-  const uint8_t digittoaddress[] = {0, 5, 1, 6, 2, 7, 3, 8, 4, 9}; // needs to be adapted accordingly
+  const uint8_t digittoaddress[] = {5, 0, 6, 1, 7, 2, 8, 3, 9, 4}; // needs to be adapted accordingly
   l[baseaddress + digittoaddress[value] * 2 + 0] = CRGB::Red;
   l[baseaddress + digittoaddress[value] * 2 + 1] = CRGB::Blue;
   ESP_LOGV(TAG, "drawLEDDigit:: setting:%3d because of v:%d", baseaddress + digittoaddress[value] * 2 + 0, value);
   ESP_LOGV(TAG, "drawLEDDigit:: setting:%3d because of v:%d", baseaddress + digittoaddress[value] * 2 + 1, value);
 }
 
-void drawLEDNumber(CRGB *l, long value, uint8_t trim = 0)
+void drawLEDNumber(CRGB *l, long value, uint8_t trim = 0, uint8_t leadingZeros = 0)
 {
-  long v = 100000;
+  long v = pow(10, (NUM_LEDS/LEDS_PER_DIGIT-1));
   int xx = 0;
   if (trim)
   {
@@ -137,12 +138,12 @@ void drawLEDNumber(CRGB *l, long value, uint8_t trim = 0)
   for (; v > 0;)
   {
     long val = (value / v) % 10;
-    if (value < v)
+    if (value < v && v > 1 && !leadingZeros)
     {
       val = -1; // clear
     }
     drawLEDDigit(l, xx, val);
-    xx += 20; // 20 LEDs per digit
+    xx += LEDS_PER_DIGIT; // 10 LEDs per digit
     v = v / 10;
   }
 }
